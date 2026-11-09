@@ -1,0 +1,88 @@
+---
+# The group first, with a fixed gid: the docker-ce package keeps an existing group.
+- name: Docker group with a fixed gid
+  ansible.builtin.group:
+    name: docker
+    gid: "{{ docker_gid }}"
+    system: true
+
+- name: Docker's apt key
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Docker's apt repository
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [arch={{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64' }} signed-by=/etc/apt/keyrings/docker.asc]
+      https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable
+    filename: docker
+    state: present
+
+- name: Install Docker Engine and Compose
+  ansible.builtin.apt:
+    name: "{{ docker_packages }}"
+    state: present
+    update_cache: true
+
+- name: Daemon settings (log rotation, keep containers up across daemon restarts)
+  ansible.builtin.copy:
+    dest: /etc/docker/daemon.json
+    content: "{{ docker_daemon | to_nice_json }}\n"
+    owner: root
+    group: root
+    mode: "0644"
+  vars:
+    docker_daemon:
+      log-driver: json-file
+      log-opts:
+        max-size: 20m
+        max-file: "5"
+      live-restore: true
+      features:
+        buildkit: true
+  notify: Restart docker
+
+- name: Docker starts at boot
+  ansible.builtin.service:
+    name: docker
+    state: started
+    enabled: true
+
+- name: Users that run docker
+  ansible.builtin.user:
+    name: "{{ item }}"
+    groups: docker
+    append: true
+  loop: "{{ docker_users }}"
+
+- name: ECR pulls through the instance role
+  when: docker_ecr_registry | length > 0
+  block:
+    - name: Install the ECR credential helper
+      ansible.builtin.apt:
+        name: amazon-ecr-credential-helper
+        state: present
+
+    - name: Docker client config directories
+      ansible.builtin.file:
+        path: "{{ item.home }}/.docker"
+        state: directory
+        owner: "{{ item.user }}"
+        group: "{{ item.user }}"
+        mode: "0700"
+      loop: &docker_config_owners
+        - { user: root, home: /root }
+        - { user: ubuntu, home: /home/ubuntu }
+
+    - name: Use the helper for the registry
+      ansible.builtin.copy:
+        dest: "{{ item.home }}/.docker/config.json"
+        content: "{{ {'credHelpers': {docker_ecr_registry: 'ecr-login'}} | to_nice_json }}\n"
+        owner: "{{ item.user }}"
+        group: "{{ item.user }}"
+        mode: "0600"
+      loop: *docker_config_owners

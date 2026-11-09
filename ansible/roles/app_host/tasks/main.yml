@@ -1,0 +1,118 @@
+---
+- name: Check what the inventory must provide
+  ansible.builtin.assert:
+    that:
+      - base_domain | default('') | length > 0
+      - ecr_registry | default('') | length > 0
+      - media_bucket | default('') | length > 0
+      - documents_bucket | default('') | length > 0
+      - media_base_url | default('') | length > 0
+      - aws_region | default('') | length > 0
+    fail_msg: These come from the app host's tags (terraform/stacks/dev). Is the dev stack applied?
+    quiet: true
+
+- name: App directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ app_dir }}"
+    - "{{ app_dir }}/docker/postgres"
+    - "{{ app_dir }}/caddy"
+    - "{{ app_dir }}/caddy/routes"
+
+- name: Data directories on the data volume
+  ansible.builtin.file:
+    path: "{{ app_data_dir }}/{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.owner }}"
+    mode: "0750"
+  loop: "{{ app_data_dirs }}"
+
+- name: Secrets directory (root only)
+  ansible.builtin.file:
+    path: "{{ app_data_dir }}/secrets"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Generate missing secrets (existing ones are never replaced)
+  ansible.builtin.copy:
+    dest: "{{ app_data_dir }}/secrets/{{ item }}"
+    content: "{{ lookup('community.general.random_string', length=48, special=false) }}"
+    owner: root
+    group: root
+    mode: "0600"
+    force: false
+  loop: "{{ app_secret_names }}"
+  no_log: true
+
+- name: Read the secrets
+  ansible.builtin.slurp:
+    src: "{{ app_data_dir }}/secrets/{{ item }}"
+  loop: "{{ app_secret_names }}"
+  register: app_secret_files
+  no_log: true
+
+- name: Environment file (configuration and secrets; root only)
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ app_dir }}/.env"
+    owner: root
+    group: root
+    mode: "0600"
+  vars:
+    app_secret_values: "{{ app_secret_files.results | map(attribute='content') | map('b64decode') | map('trim') }}"
+    app_secrets: "{{ dict(app_secret_names | zip(app_secret_values)) }}"
+  no_log: true
+  notify: Apply the stack
+
+- name: The compose overlay for this host
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../compose/docker-compose.ec2.yml"
+    dest: "{{ app_dir }}/docker-compose.ec2.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Apply the stack
+
+- name: Caddy configuration
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: "{{ app_dir }}/caddy/Caddyfile"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload Caddy
+
+# Each web app's deploy writes its own rewrite rules for dynamic routes; until then, none.
+- name: Route files exist for every web app
+  ansible.builtin.copy:
+    dest: "{{ app_dir }}/caddy/routes/{{ item.name }}.caddy"
+    content: "# No dynamic routes until the {{ item.name }} app is deployed.\n"
+    owner: root
+    group: root
+    mode: "0644"
+    force: false
+  loop: "{{ web_apps }}"
+
+- name: Install dp-compose (docker compose with this host's files and environment)
+  ansible.builtin.template:
+    src: dp-compose.sh.j2
+    dest: /usr/local/bin/dp-compose
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Login banner with the URLs and the commands
+  ansible.builtin.template:
+    src: motd.j2
+    dest: /etc/update-motd.d/90-delivery-plus
+    owner: root
+    group: root
+    mode: "0755"

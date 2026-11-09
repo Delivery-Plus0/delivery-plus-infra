@@ -1,0 +1,5 @@
+---
+# Both come from the instance tags (inventory): DataVolumeId and DataMount.
+data_volume_id: ""
+data_mount_point: /srv/data
+data_volume_fstype: ext4

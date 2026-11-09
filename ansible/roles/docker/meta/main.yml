@@ -1,0 +1,10 @@
+---
+galaxy_info:
+  author: Delivery Plus
+  description: Docker Engine and the Compose plugin from Docker's apt repository
+  license: MIT
+  min_ansible_version: "2.17"
+  platforms:
+    - name: Ubuntu
+      versions: [noble]
+dependencies: []

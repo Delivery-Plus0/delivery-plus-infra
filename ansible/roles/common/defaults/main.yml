@@ -1,0 +1,13 @@
+---
+swap_size_mb: 2048
+timezone: UTC
+common_packages:
+  - ca-certificates
+  - curl
+  - git
+  - htop
+  - jq
+  - rsync
+  - unzip
+  - chrony
+  - unattended-upgrades

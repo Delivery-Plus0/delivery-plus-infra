@@ -1,0 +1,9 @@
+---
+- name: Reload ssh
+  ansible.builtin.service:
+    name: ssh
+    state: reloaded
+
+- name: Activate swap
+  ansible.builtin.shell: mkswap /swapfile && swapon /swapfile
+  changed_when: true

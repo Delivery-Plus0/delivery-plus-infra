@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# docker compose for the Delivery Plus stack on this host, e.g.:
+#   sudo dp-compose ps
+#   sudo dp-compose logs -f --tail 100 order-service
+#   sudo dp-compose --profile tools up -d kafka-ui
+set -euo pipefail
+cd {{ app_dir }}
+release=()
+if [[ -f release.env ]]; then release=(--env-file release.env); fi
+exec docker compose \
+  --project-name {{ app_compose_project }} \
+  --env-file .env "${release[@]}" \
+  -f docker-compose.base.yml \
+  -f docker-compose.prod.yml \
+  -f docker-compose.ec2.yml \
+  "$@"

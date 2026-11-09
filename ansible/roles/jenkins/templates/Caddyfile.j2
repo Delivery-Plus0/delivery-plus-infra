@@ -1,0 +1,11 @@
+# {{ ansible_managed }}
+{
+{% if acme_email %}
+	email {{ acme_email }}
+{% endif %}
+}
+
+jenkins.{{ base_domain }} {
+	encode zstd gzip
+	reverse_proxy jenkins:8080
+}

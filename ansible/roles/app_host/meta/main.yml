@@ -1,0 +1,10 @@
+---
+galaxy_info:
+  author: Delivery Plus
+  description: Prepare the app host for the backend stack (secrets, environment, Caddy, compose wrapper)
+  license: MIT
+  min_ansible_version: "2.17"
+  platforms:
+    - name: Ubuntu
+      versions: [noble]
+dependencies: []

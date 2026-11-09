@@ -1,0 +1,10 @@
+---
+galaxy_info:
+  author: Delivery Plus
+  description: Jenkins controller in Docker (JCasC, Job DSL) behind Caddy
+  license: MIT
+  min_ansible_version: "2.17"
+  platforms:
+    - name: Ubuntu
+      versions: [noble]
+dependencies: []

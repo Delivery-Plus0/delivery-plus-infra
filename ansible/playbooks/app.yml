@@ -1,0 +1,14 @@
+---
+# Configure the app host: OS, Docker (pulling from ECR through the instance role), the data volume,
+# and the stack's configuration. Doesn't deploy a release (deploy.yml does).
+- name: App host
+  hosts: app
+  become: true
+  gather_facts: true
+  roles:
+    - role: common
+    - role: docker
+      vars:
+        docker_ecr_registry: "{{ ecr_registry }}"
+    - role: data_volume
+    - role: app_host

@@ -1,0 +1,13 @@
+---
+docker_gid: 2375
+docker_users:
+  - ubuntu
+docker_packages:
+  - docker-ce
+  - docker-ce-cli
+  - containerd.io
+  - docker-buildx-plugin
+  - docker-compose-plugin
+# When set, `docker pull` from this ECR registry authenticates with the instance role
+# (amazon-ecr-credential-helper); no `docker login`, no stored password.
+docker_ecr_registry: ""

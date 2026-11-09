@@ -1,0 +1,195 @@
+# The dev environment on EC2, layered on the backend's own compose files:
+#
+#   docker compose -p delivery-plus \
+#     -f docker-compose.base.yml -f docker-compose.prod.yml -f docker-compose.ec2.yml \
+#     --env-file .env --env-file release.env up -d --wait
+#
+# On the host, `dp-compose` wraps that command (ansible/roles/app_host).
+#
+# docker-compose.base.yml / docker-compose.prod.yml come from the backend commit being deployed
+# (Delivery-Plus0/delivery-plus), so every service keeps the environment variables, health checks and
+# dependencies the backend defines. This file only changes what is specific to this host:
+#
+# - images come from ECR, tagged with the backend commit (no builds on the host);
+# - nothing is published but Caddy (80/443): the gateway, Postgres, Redis and Kafka stay on the
+#   Docker network;
+# - Postgres, Redis, Zookeeper and Kafka are self-hosted and keep their data on the EBS data volume;
+# - Kafka gets a heap that fits next to 12 services on 8 GiB, and its topics are created up front;
+# - memory limits, so one runaway service can't take the host down.
+
+x-service: &service
+  pull_policy: missing
+  mem_limit: 384m
+
+services:
+  # ---------------------------------------------------------------------------------------------
+  # Application services: the backend's definitions, images from ECR.
+  # ---------------------------------------------------------------------------------------------
+  api-gateway:
+    <<: *service
+    image: ${ECR_REGISTRY}/delivery-plus/api-gateway:${IMAGE_TAG:?IMAGE_TAG must be set}
+    # Only Caddy talks to the gateway; it isn't published on the host.
+    ports: !reset []
+
+  auth-service:
+    <<: *service
+    image: ${ECR_REGISTRY}/delivery-plus/auth-service:${IMAGE_TAG}
+
+  user-service:
+    <<: *service
+    image: ${ECR_REGISTRY}/delivery-plus/user-service:${IMAGE_TAG}
+
+  restaurant-service:
+    <<: *service
+    image: ${ECR_REGISTRY}/delivery-plus/restaurant-service:${IMAGE_TAG}
+
+  menu-service:
+    <<: *service
+    image: ${ECR_REGISTRY}/delivery-plus/menu-service:${IMAGE_TAG}
+
+  cart-service:
+    <<: *service
+    image: ${ECR_REGISTRY}/delivery-plus/cart-service:${IMAGE_TAG}
+
+  order-service:
+    <<: *service
+    image: ${ECR_REGISTRY}/delivery-plus/order-service:${IMAGE_TAG}
+
+  payment-service:
+    <<: *service
+    image: ${ECR_REGISTRY}/delivery-plus/payment-service:${IMAGE_TAG}
+
+  delivery-service:
+    <<: *service
+    image: ${ECR_REGISTRY}/delivery-plus/delivery-service:${IMAGE_TAG}
+
+  driver-service:
+    <<: *service
+    image: ${ECR_REGISTRY}/delivery-plus/driver-service:${IMAGE_TAG}
+
+  tracking-service:
+    <<: *service
+    image: ${ECR_REGISTRY}/delivery-plus/tracking-service:${IMAGE_TAG}
+
+  notification-service:
+    <<: *service
+    image: ${ECR_REGISTRY}/delivery-plus/notification-service:${IMAGE_TAG}
+
+  # ---------------------------------------------------------------------------------------------
+  # Self-hosted infrastructure (no RDS, ElastiCache or MSK): data on the EBS data volume.
+  # ---------------------------------------------------------------------------------------------
+  postgres:
+    mem_limit: 1g
+    shm_size: 256m
+    # Nine service databases with a TypeORM pool each: more connections than the default 100.
+    command: ['postgres', '-c', 'max_connections=200', '-c', 'shared_buffers=256MB']
+
+  redis:
+    mem_limit: 256m
+
+  zookeeper:
+    mem_limit: 512m
+    environment:
+      KAFKA_HEAP_OPTS: -Xms128m -Xmx256m
+    # Kafka stores its cluster id; if Zookeeper forgot it (a recreated container without volumes),
+    # Kafka would refuse to start. So Zookeeper's data persists too.
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_log:/var/lib/zookeeper/log
+
+  kafka:
+    mem_limit: 1g
+    environment:
+      KAFKA_HEAP_OPTS: -Xms512m -Xmx512m
+      # One broker: everything at replication 1. New topics get 3 partitions (events are keyed by
+      # orderId, so per-order ordering holds with any partition count).
+      KAFKA_NUM_PARTITIONS: '3'
+      KAFKA_DEFAULT_REPLICATION_FACTOR: '1'
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: '1'
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: '1'
+      KAFKA_LOG_RETENTION_HOURS: '168'
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+
+  # Creates the event topics and their dead-letter topics up front (backend docs/deployment.md:
+  # "production should create them up front"). Idempotent; the deploy runs it once Kafka is healthy:
+  #   dp-compose run --rm kafka-init
+  kafka-init:
+    image: confluentinc/cp-kafka:7.6.1
+    profiles: ['init']
+    restart: 'no'
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ['bash', '-ec']
+    command:
+      - |
+        for topic in order.events payment.events delivery.events; do
+          kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists \
+            --topic "$$topic" --partitions 3 --replication-factor 1
+          # Dead letters are kept two weeks: longer than the source topics (7 days), for replays.
+          kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists \
+            --topic "$$topic.dlq" --partitions 3 --replication-factor 1 --config retention.ms=1209600000
+        done
+        kafka-topics --bootstrap-server kafka:29092 --list
+
+  # ---------------------------------------------------------------------------------------------
+  # Edge: Caddy terminates TLS (Let's Encrypt) for the API and serves the three web apps.
+  # ---------------------------------------------------------------------------------------------
+  edge:
+    image: caddy:2.8.4-alpine
+    restart: unless-stopped
+    mem_limit: 256m
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy/routes:/etc/caddy/routes:ro
+      - ${DATA_DIR:?DATA_DIR must be set}/web:/srv/web:ro
+      - ${DATA_DIR}/caddy/data:/data
+      - ${DATA_DIR}/caddy/config:/config
+    depends_on:
+      api-gateway:
+        condition: service_started
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', 'http://127.0.0.1:2019/config/']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  # Kafka UI for debugging, only on the host's loopback: reach it through an SSH tunnel
+  # (docs/runbook.md). Not started by default: `dp-compose --profile tools up -d kafka-ui`.
+  kafka-ui:
+    image: provectuslabs/kafka-ui:v0.7.2
+    profiles: ['tools']
+    restart: unless-stopped
+    mem_limit: 512m
+    ports:
+      - '127.0.0.1:8085:8080'
+    environment:
+      KAFKA_CLUSTERS_0_NAME: delivery-plus-dev
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      DYNAMIC_CONFIG_ENABLED: 'false'
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+# The base file's named volumes, bound to directories on the EBS data volume (DATA_DIR), so the data
+# outlives containers, images and even the instance.
+volumes:
+  postgres_data:
+    driver: local
+    driver_opts: { type: none, o: bind, device: '${DATA_DIR}/postgres' }
+  redis_data:
+    driver: local
+    driver_opts: { type: none, o: bind, device: '${DATA_DIR}/redis' }
+  kafka_data:
+    driver: local
+    driver_opts: { type: none, o: bind, device: '${DATA_DIR}/kafka' }
+  zookeeper_data:
+    driver: local
+    driver_opts: { type: none, o: bind, device: '${DATA_DIR}/zookeeper/data' }
+  zookeeper_log:
+    driver: local
+    driver_opts: { type: none, o: bind, device: '${DATA_DIR}/zookeeper/log' }

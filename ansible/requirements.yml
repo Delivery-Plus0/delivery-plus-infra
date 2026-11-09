@@ -1,0 +1,12 @@
+---
+# Installed in the tools image (ci/tools.Dockerfile) through the `ansible` package, which bundles them.
+# For a bare ansible-core: ansible-galaxy collection install -r requirements.yml
+collections:
+  - name: amazon.aws
+    version: ">=8.2.0,<9.0.0"
+  - name: community.docker
+    version: ">=3.13.0,<4.0.0"
+  - name: community.general
+    version: ">=9.5.0,<10.0.0"
+  - name: ansible.posix
+    version: ">=1.6.0,<2.0.0"

@@ -1,0 +1,40 @@
+---
+# Dynamic inventory: the hosts Terraform created, found by their tags. Needs AWS credentials (the
+# Jenkins instance role, or an admin profile) and boto3.
+#
+#   ansible-inventory --graph
+#
+# Groups come from the Role tag: `app` and `jenkins`. Settings Ansible needs about a host (its domain,
+# data volume, buckets, registry) are read from tags too, so Terraform stays the one source.
+plugin: amazon.aws.aws_ec2
+regions:
+  - eu-central-1
+filters:
+  tag:Project: delivery-plus
+  tag:ManagedBy: terraform
+  instance-state-name: running
+hostnames:
+  - tag:Name
+keyed_groups:
+  - key: tags.Role
+    prefix: ""
+    separator: ""
+    leading_separator: false
+compose:
+  # From Jenkins, hosts are reached over the VPC (the app host only admits Jenkins' security group);
+  # from an admin workstation, over the Elastic IP.
+  ansible_host: private_ip_address if lookup('env', 'ANSIBLE_PRIVATE_NETWORK') == 'true' else public_ip_address
+  host_public_ip: tags.PublicIp
+  host_private_ip: private_ip_address
+  base_domain: tags.BaseDomain
+  data_volume_id: tags.DataVolumeId
+  data_mount_point: tags.DataMount
+  aws_region: tags.Region
+  ecr_registry: tags.Registry
+  host_environment: tags.Environment
+  media_bucket: tags.MediaBucket | default('')
+  documents_bucket: tags.DocumentsBucket | default('')
+  media_base_url: tags.MediaBaseUrl | default('')
+  extra_app_origins: (tags.ExtraOrigins | default('')).split()
+  ses_from_address: tags.SesFromAddress | default('')
+  tf_state_bucket: tags.StateBucket | default('')

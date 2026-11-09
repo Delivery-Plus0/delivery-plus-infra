@@ -1,0 +1,10 @@
+---
+profile: production
+offline: true
+exclude_paths:
+  - inventories/dev/aws_ec2.yml
+skip_list:
+  # Roles share inventory-level settings on purpose (app_dir, web_apps, data_mount_point,
+  # ses_from_address...): they are set once in inventories/dev/group_vars and read by several roles,
+  # so a per-role prefix would split one setting into several names.
+  - var-naming[no-role-prefix]

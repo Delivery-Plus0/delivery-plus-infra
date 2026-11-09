@@ -1,0 +1,11 @@
+---
+project: delivery-plus
+
+# Fixed gid for the docker group on every host, created before Docker is installed: Jenkins runs
+# pipeline containers with `--group-add 2375` so they can use the host's Docker socket.
+docker_gid: 2375
+
+# Swap is a safety net on hosts that run many JVM/Node processes; 0 turns it off.
+swap_size_mb: 2048
+
+timezone: UTC

@@ -1,0 +1,27 @@
+---
+# The Jenkins host: the controller in Docker behind Caddy (HTTPS), building with the host's Docker.
+
+jenkins_home: "{{ data_mount_point }}"   # /var/jenkins_home on the data volume (same path in the container)
+jenkins_dir: /opt/jenkins
+jenkins_admin_user: admin
+jenkins_url: "https://jenkins.{{ base_domain }}/"
+
+# Repositories the jobs build (all public).
+github_org: Delivery-Plus0
+infra_repo: "https://github.com/{{ github_org }}/delivery-plus-infra.git"
+infra_branch: dev
+backend_repo: "https://github.com/{{ github_org }}/delivery-plus.git"
+app_repos:
+  customer: "https://github.com/{{ github_org }}/delivery-plus-customer-app.git"
+  driver: "https://github.com/{{ github_org }}/delivery-plus-driver-app.git"
+  restaurant: "https://github.com/{{ github_org }}/delivery-plus-restaurant-app.git"
+
+# The private half of the deploy key pair (its public half is ssh_public_key in the platform stack).
+# Needed on the first run from the admin workstation; afterwards it stays on the host.
+jenkins_deploy_key_file: "{{ lookup('env', 'DEPLOY_KEY_FILE') }}"
+
+# The dev backend's first super admin (bootstrapped by the deploy pipeline; the password is
+# generated on the Jenkins host and kept as the dev-admin credential).
+dev_admin_email: "admin@{{ base_domain }}"
+
+acme_email: ""

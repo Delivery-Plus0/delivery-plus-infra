@@ -1,0 +1,24 @@
+---
+extends: default
+ignore: |
+  .terraform/
+  tests/.out/
+  node_modules/
+rules:
+  line-length:
+    max: 140
+    allow-non-breakable-inline-mappings: true
+  document-start: disable
+  truthy:
+    allowed-values: ['true', 'false', 'on']
+    check-keys: false
+  comments:
+    min-spaces-from-content: 1
+  comments-indentation: false
+  braces:
+    max-spaces-inside: 1
+  brackets:
+    max-spaces-inside: 1
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: true
