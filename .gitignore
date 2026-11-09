@@ -1,0 +1,25 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+tfplan.txt
+crash.log
+terraform.tfvars
+backend.hcl
+# Lock files are written by the first `terraform init` against the real registry; commit them then.
+.terraform.lock.hcl
+
+# Secrets never live here
+*.pem
+*.key
+id_*
+.env
+!tests/fixtures/*.env
+
+# Tests and tools
+tests/.out/
+__pycache__/
+.ansible/
+*.retry
