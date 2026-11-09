@@ -1,0 +1,8 @@
+---
+# Everything: the Jenkins host and the app host. Run from an admin workstation (docs/bootstrap.md);
+# Jenkins itself runs only app.yml and deploy.yml.
+- name: Jenkins host
+  ansible.builtin.import_playbook: jenkins.yml
+
+- name: App host
+  ansible.builtin.import_playbook: app.yml

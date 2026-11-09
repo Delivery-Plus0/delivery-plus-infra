@@ -1,0 +1,31 @@
+---
+# The app host: the whole backend in Docker Compose, behind Caddy.
+
+swap_size_mb: 4096
+
+app_dir: /opt/delivery-plus
+app_data_dir: "{{ data_mount_point }}"
+app_compose_project: delivery-plus
+
+# Accounts and providers for the dev environment. Email and SMS stay off (codes can't be delivered),
+# so verification is not required; turn SES on in the dev stack (enable_ses) to send email codes.
+app_config:
+  postgres_user: delivery_plus
+  email_provider: "{{ 'ses' if ses_from_address else 'disabled' }}"
+  sms_provider: disabled
+  phone_verification_required: false
+  default_delivery_radius_km: 5
+  # One proxy (Caddy) in front of the gateway appends the client address to X-Forwarded-For.
+  trusted_proxy_hops: 1
+
+# The three web apps Caddy serves: <host>.<base_domain>.
+web_apps:
+  - name: customer
+    host: app
+  - name: driver
+    host: driver
+  - name: restaurant
+    host: restaurant
+
+# Let's Encrypt contact address (expiry notices). Empty: no address is registered.
+acme_email: ""

@@ -1,0 +1,144 @@
+---
+- name: Check what the inventory must provide
+  ansible.builtin.assert:
+    that:
+      - base_domain | default('') | length > 0
+      - ecr_registry | default('') | length > 0
+      - tf_state_bucket | length > 0
+      - aws_region | default('') | length > 0
+    fail_msg: These come from the Jenkins host's tags (terraform/stacks/platform).
+    quiet: true
+
+- name: Jenkins directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.owner }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ jenkins_dir }}", owner: root, mode: "0755" }
+    - { path: "{{ jenkins_dir }}/build", owner: root, mode: "0755" }
+    - { path: "{{ jenkins_dir }}/casc", owner: root, mode: "0755" }
+    - { path: "{{ jenkins_dir }}/caddy", owner: root, mode: "0755" }
+    # JCasC reads secrets from files named after the variable (${JENKINS_ADMIN_PASSWORD}).
+    - { path: "{{ jenkins_dir }}/secrets", owner: "1000", mode: "0700" }
+    # The container's jenkins user is uid 1000; the home is mounted at the same path, so pipeline
+    # containers started through the host's Docker see the same workspace paths.
+    - { path: "{{ jenkins_home }}", owner: "1000", mode: "0755" }
+    - { path: "{{ jenkins_home }}/caddy-data", owner: root, mode: "0700" }
+
+- name: Generate the Jenkins admin and dev-admin passwords (once)
+  ansible.builtin.copy:
+    dest: "{{ jenkins_dir }}/secrets/{{ item }}"
+    content: "{{ lookup('community.general.random_string', length=32, special=false) }}"
+    owner: "1000"
+    group: "1000"
+    mode: "0400"
+    force: false
+  loop:
+    - JENKINS_ADMIN_PASSWORD
+    - DEV_ADMIN_PASSWORD
+  no_log: true
+
+- name: Is the deploy key already on the host?
+  ansible.builtin.stat:
+    path: "{{ jenkins_dir }}/secrets/DEPLOY_SSH_KEY"
+  register: jenkins_deploy_key
+
+- name: The deploy key must come from the admin the first time
+  ansible.builtin.assert:
+    that: jenkins_deploy_key.stat.exists or jenkins_deploy_key_file | length > 0
+    fail_msg: >-
+      Set DEPLOY_KEY_FILE to the private half of the deploy key pair (docs/bootstrap.md), e.g.
+      DEPLOY_KEY_FILE=~/.ssh/delivery-plus-deploy ansible-playbook playbooks/jenkins.yml
+    quiet: true
+
+- name: Install the deploy key (Jenkins' app-ssh credential)
+  when: jenkins_deploy_key_file | length > 0
+  ansible.builtin.copy:
+    src: "{{ jenkins_deploy_key_file }}"
+    dest: "{{ jenkins_dir }}/secrets/DEPLOY_SSH_KEY"
+    owner: "1000"
+    group: "1000"
+    mode: "0400"
+  no_log: true
+  notify: Restart Jenkins
+
+- name: Controller image sources
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../jenkins/controller/{{ item }}"
+    dest: "{{ jenkins_dir }}/build/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - Dockerfile
+    - plugins.txt
+  register: jenkins_image_sources
+
+- name: Build the controller image
+  community.docker.docker_image:
+    name: "{{ jenkins_image }}"
+    tag: latest
+    source: build
+    build:
+      path: "{{ jenkins_dir }}/build"
+      pull: true
+    force_source: "{{ jenkins_image_sources is changed }}"
+  notify: Restart Jenkins
+
+- name: Configuration as code
+  ansible.builtin.template:
+    src: jenkins.yaml.j2
+    dest: "{{ jenkins_dir }}/casc/jenkins.yaml"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart Jenkins
+
+- name: Jobs (Job DSL)
+  ansible.builtin.template:
+    src: jobs.groovy.j2
+    dest: "{{ jenkins_dir }}/casc/jobs.groovy"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart Jenkins
+
+- name: Caddy for the Jenkins UI
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: "{{ jenkins_dir }}/caddy/Caddyfile"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart Jenkins
+
+- name: Compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ jenkins_dir }}/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart Jenkins
+
+- name: Start Jenkins
+  ansible.builtin.command: docker compose --project-directory {{ jenkins_dir }} up -d --wait --wait-timeout 300
+  changed_when: false
+
+- name: Jenkins answers
+  ansible.builtin.uri:
+    url: http://127.0.0.1:8080/login
+    status_code: 200
+  register: jenkins_up
+  retries: 30
+  delay: 10
+  until: jenkins_up is succeeded
+
+- name: Where to sign in
+  ansible.builtin.debug:
+    msg: >-
+      Jenkins: {{ jenkins_url }} as {{ jenkins_admin_user }}. The password is on the host:
+      sudo cat {{ jenkins_dir }}/secrets/JENKINS_ADMIN_PASSWORD

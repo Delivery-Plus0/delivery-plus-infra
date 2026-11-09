@@ -1,0 +1,20 @@
+---
+# Set by the deploy pipeline (jenkins/pipelines/deploy.Jenkinsfile):
+deploy_backend_dir: ""      # checkout of Delivery-Plus0/delivery-plus at the release commit (controller path)
+deploy_backend_ref: ""      # what was asked for (a branch or a commit)
+deploy_image_tag: ""        # the 12-character commit the images are tagged with
+deploy_web_dir: ""          # optional: <dir>/<app>/ builds and <dir>/routes/<app>.caddy (controller path)
+
+# The first super admin of this environment (backend runbook bootstrap-admin.md). Runs on every
+# deploy; once an admin exists the backend refuses and the task reports "ok".
+deploy_bootstrap_admin: true
+deploy_admin_email: "{{ lookup('env', 'DEV_ADMIN_EMAIL') }}"
+deploy_admin_password: "{{ lookup('env', 'DEV_ADMIN_PASSWORD') }}"
+
+deploy_backend_files:
+  - docker-compose.base.yml
+  - docker-compose.prod.yml
+  - docker/postgres/init.sql
+
+# Old images are pruned after this long (keeps a few releases around for a quick rollback).
+deploy_image_retention: 168h

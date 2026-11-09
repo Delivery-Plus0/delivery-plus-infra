@@ -1,0 +1,59 @@
+// {{ ansible_managed }}
+// (infraRepo/infraBranch are binding variables, not `def`: the methods below can read them.)
+// The Jenkins jobs, all from Jenkinsfiles in Delivery-Plus0/delivery-plus-infra (jenkins/pipelines).
+
+infraRepo = '{{ infra_repo }}'
+infraBranch = '{{ infra_branch }}'
+
+def fromInfra(String name, String description, String scriptPath) {
+  pipelineJob(name) {
+    delegate.description(description)
+    logRotator { numToKeep(30) }
+    definition {
+      cpsScm {
+        scm {
+          git {
+            remote { url(infraRepo) }
+            branch("*/${infraBranch}")
+          }
+        }
+        delegate.scriptPath(scriptPath)
+        lightweight(true)
+      }
+    }
+  }
+}
+
+// Lint and test this repository on every branch (polled every 5 minutes).
+multibranchPipelineJob('infra-ci') {
+  description('delivery-plus-infra: Terraform fmt/validate/tflint/test, ansible-lint, yamllint, shellcheck, hadolint, compose and template tests.')
+  branchSources {
+    branchSource {
+      source {
+        git {
+          id('delivery-plus-infra')
+          remote(infraRepo)
+          traits {
+            gitBranchDiscovery()
+          }
+        }
+      }
+    }
+  }
+  factory {
+    workflowBranchProjectFactory {
+      scriptPath('jenkins/pipelines/ci.Jenkinsfile')
+    }
+  }
+  triggers {
+    periodicFolderTrigger { interval('5m') }
+  }
+  orphanedItemStrategy {
+    discardOldItems { numToKeep(10) }
+  }
+}
+
+fromInfra('dev-terraform', 'Plan, apply or destroy the dev stack (terraform/stacks/dev): the app host with its static IP, and the S3 buckets.', 'jenkins/pipelines/terraform.Jenkinsfile')
+fromInfra('dev-ansible', 'Configure the app host with Ansible (check mode first by default).', 'jenkins/pipelines/ansible.Jenkinsfile')
+fromInfra('dev-deploy', 'Build, test and deploy a backend commit and the three web apps to the dev environment, then smoke-test it.', 'jenkins/pipelines/deploy.Jenkinsfile')
+fromInfra('dev-power', 'Stop or start the dev app host to save money (its static IP and data stay).', 'jenkins/pipelines/power.Jenkinsfile')

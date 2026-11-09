@@ -1,0 +1,48 @@
+---
+app_dir: /opt/delivery-plus
+app_data_dir: /srv/data
+app_compose_project: delivery-plus
+
+# Generated once on the host (on the data volume, so they survive an instance replacement and stay
+# in step with the database), never in git, Jenkins or logs. Each is 48 random letters and digits:
+# long enough for every backend minimum (32), and URL-safe for the Postgres connection strings.
+app_secret_names:
+  - POSTGRES_PASSWORD
+  - JWT_SECRET
+  - SYSTEM_JWT_SECRET
+  - INTERNAL_AUTH_SECRET
+  - NATIONAL_ID_HMAC_SECRET
+  - EMAIL_CODE_HASH_SECRET
+  - OTP_HASH_SECRET
+
+app_config:
+  postgres_user: delivery_plus
+  email_provider: disabled
+  sms_provider: disabled
+  phone_verification_required: false
+  default_delivery_radius_km: 5
+  trusted_proxy_hops: 1
+
+web_apps:
+  - { name: customer, host: app }
+  - { name: driver, host: driver }
+  - { name: restaurant, host: restaurant }
+
+extra_app_origins: []
+acme_email: ""
+ses_from_address: ""
+
+# Container users that own their data directories (cp-kafka and cp-zookeeper run as appuser 1000;
+# Postgres and Redis fix their own ownership when they start as root).
+app_data_dirs:
+  - { path: postgres, owner: root }
+  - { path: redis, owner: root }
+  - { path: kafka, owner: "1000" }
+  - { path: zookeeper/data, owner: "1000" }
+  - { path: zookeeper/log, owner: "1000" }
+  - { path: caddy/data, owner: root }
+  - { path: caddy/config, owner: root }
+  - { path: web, owner: root }
+
+# Where the Caddy container sees the per-app route files (mounted from {{ app_dir }}/caddy/routes).
+caddy_routes_dir: /etc/caddy/routes

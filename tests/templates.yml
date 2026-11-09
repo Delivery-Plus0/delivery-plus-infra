@@ -1,0 +1,91 @@
+---
+# Renders every Ansible template with fixture values into tests/.out (no hosts, no AWS), so
+# tests/templates.sh can validate the results with the real tools (caddy, docker compose, yaml).
+- name: Render the role templates
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    out: "{{ playbook_dir }}/.out"
+    roles_dir: "{{ playbook_dir }}/../ansible/roles"
+    ansible_managed: Rendered by tests/templates.yml
+    base_domain: 203-0-113-10.sslip.io
+    host_public_ip: 203.0.113.10
+    host_environment: dev
+    ecr_registry: 123456789012.dkr.ecr.eu-central-1.amazonaws.com
+    aws_region: eu-central-1
+    media_bucket: delivery-plus-dev-media-123456789012
+    documents_bucket: delivery-plus-dev-documents-123456789012
+    media_base_url: https://delivery-plus-dev-media-123456789012.s3.eu-central-1.amazonaws.com
+    extra_app_origins: [http://localhost:8081]
+    ses_from_address: ""
+    acme_email: ops@example.com
+    app_dir: /opt/delivery-plus
+    app_data_dir: /srv/data
+    app_compose_project: delivery-plus
+    app_config:
+      postgres_user: delivery_plus
+      email_provider: disabled
+      sms_provider: disabled
+      phone_verification_required: false
+      default_delivery_radius_km: 5
+      trusted_proxy_hops: 1
+    web_apps:
+      - { name: customer, host: app }
+      - { name: driver, host: driver }
+      - { name: restaurant, host: restaurant }
+    caddy_routes_dir: "{{ out }}/routes"
+    app_secrets:
+      POSTGRES_PASSWORD: fixturePostgresPassword0000000000000000000000000
+      JWT_SECRET: fixtureJwtSecret00000000000000000000000000000000
+      SYSTEM_JWT_SECRET: fixtureSystemJwtSecret000000000000000000000000000
+      INTERNAL_AUTH_SECRET: fixtureInternalAuthSecret0000000000000000000000
+      NATIONAL_ID_HMAC_SECRET: fixtureNationalIdHmacSecret00000000000000000000
+      EMAIL_CODE_HASH_SECRET: fixtureEmailCodeHashSecret000000000000000000000
+      OTP_HASH_SECRET: fixtureOtpHashSecret0000000000000000000000000000
+    # Jenkins
+    jenkins_home: /var/jenkins_home
+    jenkins_dir: /opt/jenkins
+    jenkins_admin_user: admin
+    jenkins_url: https://jenkins.203-0-113-20.sslip.io/
+    jenkins_image: delivery-plus/jenkins
+    jenkins_executors: 2
+    tf_state_bucket: delivery-plus-tfstate-123456789012
+    docker_gid: 2375
+    infra_repo: https://github.com/Delivery-Plus0/delivery-plus-infra.git
+    infra_branch: dev
+    backend_repo: https://github.com/Delivery-Plus0/delivery-plus.git
+    app_repos:
+      customer: https://github.com/Delivery-Plus0/delivery-plus-customer-app.git
+      driver: https://github.com/Delivery-Plus0/delivery-plus-driver-app.git
+      restaurant: https://github.com/Delivery-Plus0/delivery-plus-restaurant-app.git
+    dev_admin_email: admin@203-0-113-10.sslip.io
+  tasks:
+    - name: Output directories
+      ansible.builtin.file:
+        path: "{{ out }}/{{ item }}"
+        state: directory
+        mode: "0755"
+      loop: [app, jenkins, routes]
+
+    - name: Render the app host templates
+      ansible.builtin.template:
+        src: "{{ roles_dir }}/app_host/templates/{{ item.src }}"
+        dest: "{{ out }}/app/{{ item.dest }}"
+        mode: "0644"
+      loop:
+        - { src: env.j2, dest: .env }
+        - { src: Caddyfile.j2, dest: Caddyfile }
+        - { src: dp-compose.sh.j2, dest: dp-compose }
+        - { src: motd.j2, dest: motd }
+
+    - name: Render the Jenkins templates
+      ansible.builtin.template:
+        src: "{{ roles_dir }}/jenkins/templates/{{ item }}.j2"
+        dest: "{{ out }}/jenkins/{{ item }}"
+        mode: "0644"
+      loop:
+        - jenkins.yaml
+        - jobs.groovy
+        - docker-compose.yml
+        - Caddyfile

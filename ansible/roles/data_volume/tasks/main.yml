@@ -1,0 +1,28 @@
+---
+- name: Check the volume settings
+  ansible.builtin.assert:
+    that:
+      - data_volume_id is match('^vol-[0-9a-f]+$')
+      - data_mount_point is match('^/')
+    fail_msg: data_volume_id comes from the host's DataVolumeId tag (Terraform modules/host).
+    quiet: true
+
+# On Nitro instances an EBS volume is an NVMe device whose serial is the volume id without the dash.
+- name: Wait for the data volume device
+  ansible.builtin.wait_for:
+    path: "/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_{{ data_volume_id | replace('-', '') }}"
+    timeout: 180
+
+- name: Create the filesystem (only on a blank volume; never reformats)
+  community.general.filesystem:
+    dev: "/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_{{ data_volume_id | replace('-', '') }}"
+    fstype: "{{ data_volume_fstype }}"
+    opts: "-L data"
+
+- name: Mount it (and at boot; nofail keeps a boot from hanging if it's missing)
+  ansible.posix.mount:
+    path: "{{ data_mount_point }}"
+    src: "/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_{{ data_volume_id | replace('-', '') }}"
+    fstype: "{{ data_volume_fstype }}"
+    opts: defaults,noatime,nofail
+    state: mounted

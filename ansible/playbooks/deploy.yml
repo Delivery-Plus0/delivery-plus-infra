@@ -1,0 +1,16 @@
+---
+# Deploy one release to the app host (jenkins/pipelines/deploy.Jenkinsfile):
+#
+#   ansible-playbook playbooks/deploy.yml \
+#     -e deploy_backend_dir=/path/to/delivery-plus -e deploy_image_tag=0123456789ab \
+#     [-e deploy_web_dir=/path/to/web]
+#
+# Re-applies the host configuration first (quick when nothing changed), so a deploy never runs on a
+# host whose environment is out of date.
+- name: Deploy to the app host
+  hosts: app
+  become: true
+  gather_facts: true
+  roles:
+    - role: app_host
+    - role: app_deploy

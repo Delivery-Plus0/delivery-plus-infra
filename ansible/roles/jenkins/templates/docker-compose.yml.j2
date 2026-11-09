@@ -1,0 +1,37 @@
+# {{ ansible_managed }}
+services:
+  jenkins:
+    image: {{ jenkins_image }}:latest
+    restart: unless-stopped
+    # Only Caddy reaches the UI; the agent port (50000) isn't used: builds run on this host's Docker.
+    ports:
+      - '127.0.0.1:8080:8080'
+    group_add:
+      - '{{ docker_gid }}'
+    volumes:
+      # The same path inside and out, so pipeline containers mount the right workspace.
+      - {{ jenkins_home }}:{{ jenkins_home }}
+      - {{ jenkins_dir }}/casc:/var/jenkins_casc:ro
+      - {{ jenkins_dir }}/secrets:/run/secrets:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      JENKINS_HOME: {{ jenkins_home }}
+      JENKINS_ADMIN_USER: {{ jenkins_admin_user }}
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', 'http://localhost:8080/login']
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+
+  edge:
+    image: caddy:2.8.4-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - {{ jenkins_dir }}/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - {{ jenkins_home }}/caddy-data:/data
+    depends_on:
+      - jenkins

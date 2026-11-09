@@ -1,0 +1,136 @@
+---
+- name: Check the release
+  ansible.builtin.assert:
+    that:
+      - deploy_backend_dir | length > 0
+      - deploy_image_tag is match('^[0-9a-f]{12}$')
+    fail_msg: The deploy needs deploy_backend_dir (a backend checkout) and deploy_image_tag (12 hex characters).
+    quiet: true
+
+- name: The backend's compose files at this release
+  ansible.builtin.copy:
+    src: "{{ deploy_backend_dir }}/{{ item }}"
+    dest: "{{ app_dir }}/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ deploy_backend_files }}"
+
+- name: The release (image tag and backend ref)
+  ansible.builtin.copy:
+    dest: "{{ app_dir }}/release.env"
+    content: |
+      # Written by the deploy pipeline.
+      IMAGE_TAG={{ deploy_image_tag }}
+      BACKEND_REF={{ deploy_backend_ref | default(deploy_image_tag, true) }}
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Web apps
+  when: deploy_web_dir | length > 0
+  block:
+    - name: Static builds of the web apps
+      ansible.posix.synchronize:
+        src: "{{ deploy_web_dir }}/{{ item.name }}/"
+        dest: "{{ app_data_dir }}/web/{{ item.name }}/"
+        delete: true
+        recursive: true
+        rsync_opts:
+          - --chmod=D755,F644
+      loop: "{{ web_apps }}"
+
+    - name: Their dynamic-route rewrites
+      ansible.builtin.copy:
+        src: "{{ deploy_web_dir }}/routes/{{ item.name }}.caddy"
+        dest: "{{ app_dir }}/caddy/routes/{{ item.name }}.caddy"
+        owner: root
+        group: root
+        mode: "0644"
+      loop: "{{ web_apps }}"
+
+- name: The compose files and environment are valid together
+  ansible.builtin.command: dp-compose config --quiet
+  changed_when: false
+
+- name: Pull the release's images from ECR
+  ansible.builtin.command: dp-compose pull --quiet
+  register: deploy_pull
+  changed_when: true
+  retries: 2
+  delay: 10
+  until: deploy_pull is succeeded
+
+- name: Start Postgres, Redis, Zookeeper and Kafka
+  ansible.builtin.command: dp-compose up -d --no-build --wait --wait-timeout 300 postgres redis zookeeper kafka
+  changed_when: true
+
+- name: Create the Kafka topics (idempotent)
+  ansible.builtin.command: dp-compose --profile init run --rm kafka-init
+  register: deploy_topics
+  changed_when: "'Created topic' in deploy_topics.stdout"
+
+- name: Start every service and wait until all are healthy
+  block:
+    - name: Bring the stack up
+      ansible.builtin.command: dp-compose up -d --no-build --wait --wait-timeout 600 --remove-orphans
+      changed_when: true
+  rescue:
+    - name: What isn't healthy
+      ansible.builtin.command: dp-compose ps --all --format "table {{ '{{' }}.Service{{ '}}' }}\t{{ '{{' }}.Status{{ '}}' }}"
+      register: deploy_ps
+      changed_when: false
+
+    - name: Recent logs of the stack
+      ansible.builtin.command: dp-compose logs --no-color --tail 40
+      register: deploy_logs
+      changed_when: false
+
+    - name: Report the failure
+      ansible.builtin.fail:
+        msg: "{{ ['The stack did not become healthy.', deploy_ps.stdout] + deploy_logs.stdout_lines[-200:] }}"
+
+- name: Reload Caddy (routes of the new web builds)
+  ansible.builtin.command: dp-compose exec -T edge caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+  changed_when: true
+
+- name: Bootstrap the environment's first super admin
+  when:
+    - deploy_bootstrap_admin | bool
+    - deploy_admin_email | length > 0
+    - deploy_admin_password | length > 0
+  ansible.builtin.command:
+    argv:
+      - dp-compose
+      - exec
+      - -T
+      - -e
+      - BOOTSTRAP_ADMIN_EMAIL
+      - -e
+      - BOOTSTRAP_ADMIN_PASSWORD
+      - auth-service
+      - node
+      - services/auth-service/dist/bootstrap/cli.js
+  environment:
+    BOOTSTRAP_ADMIN_EMAIL: "{{ deploy_admin_email }}"
+    BOOTSTRAP_ADMIN_PASSWORD: "{{ deploy_admin_password }}"
+  register: deploy_bootstrap
+  changed_when: "'Created the first super admin' in deploy_bootstrap.stdout"
+  failed_when:
+    - deploy_bootstrap.rc != 0
+    - "'Staff already exist' not in deploy_bootstrap.stderr"
+  no_log: true
+
+- name: Record the release
+  ansible.builtin.lineinfile:
+    path: "{{ app_dir }}/releases.log"
+    line: "{{ now(utc=true).strftime('%Y-%m-%dT%H:%M:%SZ') }} {{ deploy_image_tag }} {{ deploy_backend_ref | default('', true) }}"
+    create: true
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Prune old images
+  ansible.builtin.command: docker image prune --all --force --filter "until={{ deploy_image_retention }}"
+  register: deploy_prune
+  changed_when: "'Total reclaimed space: 0B' not in deploy_prune.stdout"

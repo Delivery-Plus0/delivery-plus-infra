@@ -1,0 +1,4 @@
+---
+- name: Restart Jenkins
+  ansible.builtin.command: docker compose --project-directory {{ jenkins_dir }} up -d --force-recreate --wait --wait-timeout 300
+  changed_when: true

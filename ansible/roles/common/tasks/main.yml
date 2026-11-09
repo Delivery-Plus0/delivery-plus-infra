@@ -1,0 +1,84 @@
+---
+- name: Check the OS
+  ansible.builtin.assert:
+    that:
+      - ansible_distribution == 'Ubuntu'
+      - ansible_distribution_major_version is version('22', '>=')
+    fail_msg: These roles target Ubuntu 22.04 or newer (Terraform launches Ubuntu 24.04).
+    quiet: true
+
+- name: Install base packages
+  ansible.builtin.apt:
+    name: "{{ common_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Set the time zone
+  community.general.timezone:
+    name: "{{ timezone }}"
+
+- name: Keep security updates automatic
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Kernel settings (Kafka maps many files; prefer RAM over swap)
+  ansible.posix.sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.d/60-delivery-plus.conf
+    state: present
+    reload: true
+  loop:
+    - { name: vm.max_map_count, value: "262144" }
+    - { name: vm.swappiness, value: "10" }
+    - { name: fs.inotify.max_user_watches, value: "524288" }
+
+- name: Swap file
+  when: swap_size_mb | int > 0
+  block:
+    - name: Create the swap file
+      ansible.builtin.command:
+        cmd: "fallocate -l {{ swap_size_mb }}M /swapfile"
+        creates: /swapfile
+      notify: Activate swap
+
+    - name: Restrict the swap file
+      ansible.builtin.file:
+        path: /swapfile
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Enable swap at boot
+      ansible.posix.mount:
+        path: none
+        src: /swapfile
+        fstype: swap
+        opts: sw
+        state: present
+
+- name: Activate swap before anything heavy runs
+  ansible.builtin.meta: flush_handlers
+
+- name: SSH keys only, no root login
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/10-delivery-plus.conf
+    content: |
+      # Managed by Ansible (delivery-plus-infra).
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PermitRootLogin no
+      X11Forwarding no
+      MaxAuthTries 3
+    owner: root
+    group: root
+    mode: "0644"
+    validate: /usr/sbin/sshd -t -f %s
+  notify: Reload ssh

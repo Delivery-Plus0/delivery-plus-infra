@@ -1,0 +1,19 @@
+---
+jenkins_home: /var/jenkins_home
+jenkins_dir: /opt/jenkins
+jenkins_admin_user: admin
+jenkins_url: "https://jenkins.{{ base_domain }}/"
+jenkins_image: delivery-plus/jenkins
+jenkins_executors: 2
+
+github_org: Delivery-Plus0
+infra_repo: "https://github.com/{{ github_org }}/delivery-plus-infra.git"
+infra_branch: dev
+backend_repo: "https://github.com/{{ github_org }}/delivery-plus.git"
+app_repos: {}
+
+jenkins_deploy_key_file: ""
+dev_admin_email: "admin@example.com"
+docker_gid: 2375
+acme_email: ""
+tf_state_bucket: ""

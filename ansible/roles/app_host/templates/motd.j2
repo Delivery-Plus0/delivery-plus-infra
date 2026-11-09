@@ -1,0 +1,16 @@
+#!/bin/sh
+# {{ ansible_managed }}
+cat <<'BANNER'
+
+  Delivery Plus · {{ host_environment | default('dev') }} environment
+  API          https://api.{{ base_domain }}   (or http://{{ host_public_ip }})
+  Customer     https://app.{{ base_domain }}
+  Driver       https://driver.{{ base_domain }}
+  Restaurant   https://restaurant.{{ base_domain }}
+
+  sudo dp-compose ps                      services and health
+  sudo dp-compose logs -f <service>       logs
+  cat {{ app_dir }}/release.env           the deployed backend commit
+  Runbook: https://github.com/Delivery-Plus0/delivery-plus-infra/blob/dev/docs/runbook.md
+
+BANNER

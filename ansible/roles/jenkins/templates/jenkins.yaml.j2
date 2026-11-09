@@ -1,0 +1,79 @@
+# {{ ansible_managed }}
+# Jenkins configuration as code. Changes made in the UI are replaced on the next restart: change this
+# template (ansible/roles/jenkins) instead. ${NAME} values are files in /run/secrets.
+jenkins:
+  systemMessage: >-
+    Delivery Plus · dev environment. Configured by Ansible from Delivery-Plus0/delivery-plus-infra;
+    UI changes don't survive a restart.
+  numExecutors: {{ jenkins_executors }}
+  mode: NORMAL
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "${JENKINS_ADMIN_USER}"
+          name: "Administrator"
+          password: "${JENKINS_ADMIN_PASSWORD}"
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+  crumbIssuer:
+    standard:
+      excludeClientIPFromCrumb: false
+  remotingSecurity:
+    enabled: true
+  globalNodeProperties:
+    - envVars:
+        env:
+          - key: ENVIRONMENT
+            value: dev
+          - key: AWS_REGION
+            value: "{{ aws_region }}"
+          - key: AWS_DEFAULT_REGION
+            value: "{{ aws_region }}"
+          - key: STATE_BUCKET
+            value: "{{ tf_state_bucket }}"
+          - key: ECR_REGISTRY
+            value: "{{ ecr_registry }}"
+          - key: DOCKER_GID
+            value: "{{ docker_gid }}"
+          - key: INFRA_REPO
+            value: "{{ infra_repo }}"
+          - key: BACKEND_REPO
+            value: "{{ backend_repo }}"
+{% for name, url in app_repos.items() %}
+          - key: {{ name | upper }}_APP_REPO
+            value: "{{ url }}"
+{% endfor %}
+
+unclassified:
+  location:
+    url: "{{ jenkins_url }}"
+  timestamper:
+    allPipelines: true
+
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - basicSSHUserPrivateKey:
+              scope: GLOBAL
+              id: app-ssh
+              username: ubuntu
+              description: Deploy key for the app host (Ansible over SSH)
+              privateKeySource:
+                directEntry:
+                  privateKey: "${DEPLOY_SSH_KEY}"
+          - usernamePassword:
+              scope: GLOBAL
+              id: dev-admin
+              username: "{{ dev_admin_email }}"
+              password: "${DEV_ADMIN_PASSWORD}"
+              description: The dev backend's first super admin (bootstrapped by the deploy job)
+
+security:
+  globalJobDslSecurityConfiguration:
+    useScriptSecurity: false
+
+jobs:
+  - file: /var/jenkins_casc/jobs.groovy

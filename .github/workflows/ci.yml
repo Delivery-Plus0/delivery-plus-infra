@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-test:
+    name: Lint and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the tools image
+        run: docker build -f ci/tools.Dockerfile -t delivery-plus-infra-tools .
+
+      - name: Cache TFLint plugins
+        uses: actions/cache@v4
+        with:
+          path: ~/.tflint.d
+          key: tflint-${{ hashFiles('.tflint.hcl') }}
+
+      - name: make lint test
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p ~/.tflint.d
+          docker run --rm \
+            -v "$PWD:/work" -w /work \
+            -v "$HOME/.tflint.d:/home/tools/.tflint.d" \
+            -e GITHUB_TOKEN \
+            -u "$(id -u):$(id -g)" \
+            delivery-plus-infra-tools make lint test

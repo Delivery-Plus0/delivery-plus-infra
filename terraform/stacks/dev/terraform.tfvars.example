@@ -1,0 +1,11 @@
+# Copy to terraform.tfvars (git-ignored) for local runs. Jenkins passes the same values with -var.
+region       = "eu-central-1"
+state_bucket = "delivery-plus-tfstate-123456789012"
+
+app_instance_type = "t3.large"
+
+# Leave empty to use <elastic-ip>.sslip.io (works with TLS, no domain needed).
+base_domain = ""
+
+# enable_ses       = true
+# ses_from_address = "no-reply@example.com"

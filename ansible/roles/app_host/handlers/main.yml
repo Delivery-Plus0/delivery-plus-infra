@@ -1,0 +1,17 @@
+---
+# Only once a release was deployed (release.env exists): until then there are no images to run.
+- name: Apply the stack
+  ansible.builtin.command: dp-compose up -d --no-build --wait --wait-timeout 600 --remove-orphans
+  args:
+    removes: "{{ app_dir }}/release.env"
+  changed_when: true
+
+- name: Reload Caddy
+  ansible.builtin.shell: |
+    set -o pipefail
+    if dp-compose ps --status running --services 2>/dev/null | grep -qx edge; then
+      dp-compose exec -T edge caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+    fi
+  args:
+    executable: /bin/bash
+  changed_when: true

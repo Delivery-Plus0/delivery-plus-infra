@@ -1,0 +1,15 @@
+# Jenkins plugins (jenkins-plugin-cli resolves their dependencies). Versions float to the newest
+# release compatible with the LTS core in the Dockerfile; rebuild the image to update.
+configuration-as-code
+job-dsl
+workflow-aggregator
+pipeline-stage-view
+git
+docker-workflow
+credentials-binding
+ssh-credentials
+timestamper
+ansicolor
+build-timeout
+ws-cleanup
+matrix-auth
