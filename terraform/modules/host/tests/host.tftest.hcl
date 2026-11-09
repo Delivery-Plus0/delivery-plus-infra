@@ -1,33 +1,26 @@
-# Plan-only tests with the real AWS provider and fake credentials: no AWS account or network needed.
+# A mocked AWS provider: no account, no network, and `apply` works, so values AWS would compute
+# (the Elastic IP, the volume id) are known and checkable. Same in Terraform and OpenTofu.
 
-provider "aws" {
-  region                      = "eu-central-1"
-  access_key                  = "test"
-  secret_key                  = "test"
-  skip_credentials_validation = true
-  skip_requesting_account_id  = true
-  skip_metadata_api_check     = true
-  skip_region_validation      = true
-}
+mock_provider "aws" {
+  mock_data "aws_ami" {
+    defaults = { id = "ami-0123456789abcdef0" }
+  }
 
-override_data {
-  target = data.aws_ami.ubuntu
-  values = { id = "ami-0123456789abcdef0" }
-}
+  mock_data "aws_subnet" {
+    defaults = { availability_zone = "eu-central-1a" }
+  }
 
-override_data {
-  target = data.aws_subnet.this
-  values = { availability_zone = "eu-central-1a" }
-}
+  mock_resource "aws_eip" {
+    defaults = { public_ip = "203.0.113.10", id = "eipalloc-0123456789abcdef0" }
+  }
 
-override_resource {
-  target = aws_eip.this
-  values = { public_ip = "203.0.113.10", id = "eipalloc-0123456789abcdef0" }
-}
+  mock_resource "aws_ebs_volume" {
+    defaults = { id = "vol-0123456789abcdef0" }
+  }
 
-override_resource {
-  target = aws_ebs_volume.data
-  values = { id = "vol-0123456789abcdef0" }
+  mock_resource "aws_iam_role" {
+    defaults = { arn = "arn:aws:iam::123456789012:role/delivery-plus-dev/delivery-plus-dev-app-host" }
+  }
 }
 
 variables {
@@ -41,7 +34,7 @@ variables {
 }
 
 run "hardened_instance" {
-  command = plan
+  command = apply
 
   assert {
     condition     = aws_instance.this.metadata_options[0].http_tokens == "required"
@@ -65,7 +58,7 @@ run "hardened_instance" {
 }
 
 run "sslip_domain_from_static_ip" {
-  command = plan
+  command = apply
 
   assert {
     condition     = output.base_domain == "203-0-113-10.sslip.io"
@@ -84,7 +77,7 @@ run "sslip_domain_from_static_ip" {
 }
 
 run "own_domain" {
-  command = plan
+  command = apply
 
   variables {
     base_domain = "dev.example.com"
