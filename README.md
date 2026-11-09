@@ -70,4 +70,5 @@ The Terraform tests run plan-only with fake credentials, so they need no AWS acc
 
 - This repository is **public**. Secrets are generated on the hosts and never committed: no `.env`, keys, tfvars or state.
 - Changes go through a pull request to `dev`, with CI green.
+- MIT licensed, like the rest of Delivery Plus: see [LICENSE](LICENSE).
 - The backend's business rules aren't configured here; the environment runs the backend as committed.
