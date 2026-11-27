@@ -12,7 +12,7 @@ src="${1:?usage: build-images.sh <backend checkout>}"
 prefix="${ECR_PREFIX:-delivery-plus}"
 services=(
   api-gateway auth-service user-service restaurant-service menu-service cart-service
-  order-service payment-service delivery-service driver-service tracking-service notification-service
+  order-service payment-service delivery-service driver-service tracking-service notification-service audit-service
 )
 
 [[ -f "${src}/Dockerfile" ]] || { echo "No Dockerfile in ${src}" >&2; exit 2; }
