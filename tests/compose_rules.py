@@ -9,7 +9,7 @@ from pathlib import Path
 APP_SERVICES = {
     "api-gateway", "auth-service", "user-service", "restaurant-service", "menu-service", "cart-service",
     "order-service", "payment-service", "delivery-service", "driver-service", "tracking-service",
-    "notification-service",
+    "notification-service", "audit-service",
 }
 INFRA = {"postgres", "redis", "zookeeper", "kafka"}
 

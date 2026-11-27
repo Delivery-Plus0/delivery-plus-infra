@@ -1,6 +1,6 @@
 # Architecture
 
-The dev environment runs the whole Delivery Plus backend on **one EC2 instance with a static IP**, in Docker Compose. Postgres, Redis, Zookeeper and Kafka are containers next to the 12 services: there's no RDS, ElastiCache or MSK. AWS provides only the machine (EC2 and EBS), the image registry (ECR) and object storage (S3).
+The dev environment runs the whole Delivery Plus backend on **one EC2 instance with a static IP**, in Docker Compose. Postgres, Redis, Zookeeper and Kafka are containers next to the 13 services (the gateway and 12 domain services): there's no RDS, ElastiCache or MSK. AWS provides only the machine (EC2 and EBS), the image registry (ECR) and object storage (S3).
 
 A second, smaller instance runs **Jenkins**, which applies Terraform, runs Ansible and deploys.
 
@@ -77,10 +77,11 @@ flowchart TB
             driver[driver :3009]
             track[tracking :3010]
             notif[notification :3011]
+            audit[audit :3012]
         end
-        pg[(postgres · 9 databases)]
+        pg[(postgres · 10 databases)]
         redis[(redis · AOF)]
-        kafka[(kafka · 1 broker<br/>order · payment · delivery events)]
+        kafka[(kafka · 1 broker<br/>order · payment · delivery · admin events)]
         zk[(zookeeper)]
         web[/web builds<br/>customer · driver · restaurant/]
     end

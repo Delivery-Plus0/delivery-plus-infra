@@ -65,6 +65,27 @@
   ansible.builtin.command: dp-compose up -d --no-build --wait --wait-timeout 300 postgres redis zookeeper kafka
   changed_when: true
 
+# init.sql runs only when the Postgres volume is created, so a service database the backend added later
+# (audit_service, backend #213) would be missing on an existing host. Create each missing one.
+- name: Create any service database the volume doesn't have yet
+  ansible.builtin.shell: |
+    set -euo pipefail
+    created=""
+    for db in $(grep -oE 'CREATE DATABASE [a-z_]+' {{ app_dir }}/docker/postgres/init.sql | awk '{print $3}'); do
+      exists=$(dp-compose exec -T postgres sh -c \
+        'psql -U "$POSTGRES_USER" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '"'"'$1'"'"'"' sh "$db")
+      if [ "$exists" != "1" ]; then
+        dp-compose exec -T postgres sh -c \
+          'psql -U "$POSTGRES_USER" -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE $1"' sh "$db"
+        created="$created $db"
+      fi
+    done
+    echo "created:${created:- none}"
+  args:
+    executable: /bin/bash
+  register: deploy_databases
+  changed_when: "'created: none' not in deploy_databases.stdout"
+
 - name: Create the Kafka topics (idempotent)
   ansible.builtin.command: dp-compose --profile init run --rm kafka-init
   register: deploy_topics

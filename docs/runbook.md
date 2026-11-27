@@ -39,6 +39,7 @@ The same tunnel works for Postgres, for example with a desktop client. Publish n
 - **Deploy:** run `dev-deploy` with `BACKEND_REF` set to a branch, tag or commit.
 - **Roll back:** run `dev-deploy` with the previous commit (from `releases.log`). Images still in ECR (the newest 15 per service) aren't rebuilt.
 - **Migrations** are forward-only. If the newer release migrated a database, the older code may not run on it. Fix forward, or restore a backup.
+- **New service databases** are created by the deploy: `init.sql` only runs when the Postgres volume is created, so the deploy creates any database it lists that the volume lacks (for example `audit_service`, backend #213) before the services start.
 
 ## Saving money
 

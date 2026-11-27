@@ -47,7 +47,7 @@ sequenceDiagram
     Note over J: IMAGE_TAG = the 12-character commit
     J->>J: Read the app host from its tags (domain, IP, state)
     J->>J: npm ci && npm run verify (lint, unit tests, build)
-    loop 12 services
+    loop 13 images
         J->>ECR: Tag exists? skip : docker build + push
     end
     loop customer, driver, restaurant

@@ -1,6 +1,6 @@
 # delivery-plus-infra
 
-The **dev environment** of Delivery Plus on AWS: one EC2 instance with a **static IP** runs the whole backend (12 services, Postgres, Redis, Kafka, Zookeeper) in Docker Compose, behind Caddy with automatic HTTPS. It also serves the customer, driver and restaurant web apps. Jenkins builds, tests and deploys it.
+The **dev environment** of Delivery Plus on AWS: one EC2 instance with a **static IP** runs the whole backend (the gateway and 12 services, Postgres, Redis, Kafka, Zookeeper) in Docker Compose, behind Caddy with automatic HTTPS. It also serves the customer, driver and restaurant web apps. Jenkins builds, tests and deploys it.
 
 - **Terraform** creates the AWS side: network, EC2 + Elastic IP + EBS data volume, S3 buckets, ECR, IAM.
 - **Ansible** configures the hosts and deploys releases.
@@ -11,7 +11,7 @@ The **dev environment** of Delivery Plus on AWS: one EC2 instance with a **stati
 flowchart LR
     apps[Apps and browsers] -->|https://api.&lt;ip&gt;.sslip.io| caddy
     subgraph app[App host · t3.large · static IP]
-        caddy[Caddy] --> gw[API gateway] --> svc[11 services]
+        caddy[Caddy] --> gw[API gateway] --> svc[12 services]
         svc --> pg[(Postgres)] & rd[(Redis)] & kf[(Kafka)]
         caddy --> web[Web apps]
     end

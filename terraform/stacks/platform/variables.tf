@@ -80,5 +80,6 @@ variable "services" {
     "driver-service",
     "tracking-service",
     "notification-service",
+    "audit-service",
   ]
 }
